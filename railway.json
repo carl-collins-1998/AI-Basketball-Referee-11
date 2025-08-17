@@ -8,12 +8,22 @@
   "deploy": {
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10,
-    "healthcheckPath": "/health",
-    "healthcheckTimeout": 30
+    "healthcheckPath": "/",
+    "healthcheckTimeout": 30,
+    "healthcheckInterval": "5s"
   },
   "variables": {
-    "PORT": "8000",
-    "ENVIRONMENT": "production",
-    "YOLO_CONFIG_DIR": "/tmp"
+    "PORT": {
+      "description": "Port the application will run on",
+      "value": "8000"
+    },
+    "YOLO_CONFIG_DIR": {
+      "description": "Ultralytics config directory",
+      "value": "/tmp"
+    },
+    "ENVIRONMENT": {
+      "description": "Runtime environment",
+      "value": "production"
+    }
   }
 }

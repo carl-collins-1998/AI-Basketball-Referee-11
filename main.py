@@ -5,6 +5,7 @@ from typing import Dict, Any, List
 import tempfile
 import shutil
 from contextlib import asynccontextmanager
+import resource  # Added for memory monitoring
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,8 +14,8 @@ import cv2
 from basketball_referee import ImprovedFreeThrowScorer, CVATDatasetConverter, FreeThrowModelTrainer
 
 # Configuration from environment variables
-MODEL_PATH = str(Path(__file__).parent / "models" / "best.pt")  # Local model path
-PORT = int(os.getenv('PORT', 8000))
+MODEL_PATH = str(Path(__file__).parent / "models" / "best.pt")
+PORT = int(os.getenv('PORT', 8000))  # Railway provides this
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'production')
 
 scorer_instance = None
@@ -25,6 +26,10 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events."""
     global scorer_instance
 
+    # Print memory limits
+    soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+    print(f"\nMemory limits - Soft: {soft}, Hard: {hard}")
+
     print("\n" + "=" * 60)
     print("AI BASKETBALL REFEREE API STARTING")
     print("=" * 60)
@@ -32,7 +37,6 @@ async def lifespan(app: FastAPI):
     print(f"Python version: {sys.version}")
     print(f"Model path: {MODEL_PATH}")
 
-    # Verify model exists
     if os.path.exists(MODEL_PATH):
         model_size = os.path.getsize(MODEL_PATH) / 1024 / 1024
         print(f"Model found! Size: {model_size:.2f} MB")
@@ -46,12 +50,10 @@ async def lifespan(app: FastAPI):
             traceback.print_exc()
     else:
         print("⚠️ Model file not found at the expected path!")
-        print("Please ensure the model is at:", MODEL_PATH)
 
     print("=" * 60 + "\n")
     yield
     print("\nShutting down...")
-
 
 # Create FastAPI app
 app = FastAPI(
@@ -69,17 +71,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 @app.get("/")
 async def root():
-    """Root endpoint with status info."""
+    """Root endpoint with keep-alive check."""
     return {
-        "message": "AI Basketball Referee API",
-        "version": "1.0.0",
-        "status": "ready" if scorer_instance is not None else "model not loaded",
+        "status": "alive",
         "model_loaded": scorer_instance is not None,
-        "environment": ENVIRONMENT,
-        "endpoints": ["/", "/health", "/model_status", "/score_video/", "/upload_model/", "/docs"]
+        "message": "AI Basketball Referee API"
     }
 
 
@@ -331,12 +329,4 @@ async def train_model(
 
 if __name__ == "__main__":
     import uvicorn
-
-    # Get port from environment or use default
-    host = "0.0.0.0"
-    port = int(os.getenv('PORT', 8000))  # This is the critical fix
-
-    print(f"Starting server on {host}:{port}")
-    print(f"Environment: {ENVIRONMENT}")
-
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
