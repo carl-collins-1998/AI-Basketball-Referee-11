@@ -332,8 +332,9 @@ async def train_model(
 if __name__ == "__main__":
     import uvicorn
 
+    # Get port from environment or use default
     host = "0.0.0.0"
-    port = PORT
+    port = int(os.getenv('PORT', 8000))  # This is the critical fix
 
     print(f"Starting server on {host}:{port}")
     print(f"Environment: {ENVIRONMENT}")
