@@ -2,7 +2,7 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "pip install -r requirements.txt",
+    "buildCommand": "pip install -r requirements.txt && python -c 'print(\"Build complete\")'",
     "startCommand": "python main.py"
   },
   "deploy": {
@@ -10,20 +10,22 @@
     "restartPolicyMaxRetries": 10,
     "healthcheckPath": "/",
     "healthcheckTimeout": 30,
-    "healthcheckInterval": "5s"
+    "healthcheckInterval": "10s",
+    "startTimeout": 60
   },
   "variables": {
     "PORT": {
-      "description": "Port the application will run on",
-      "value": "8000"
+      "description": "Port for FastAPI server",
+      "value": "8000",
+      "required": true
     },
     "YOLO_CONFIG_DIR": {
-      "description": "Ultralytics config directory",
-      "value": "/tmp"
+      "value": "/tmp",
+      "required": false
     },
     "ENVIRONMENT": {
-      "description": "Runtime environment",
-      "value": "production"
+      "value": "production",
+      "required": true
     }
   }
 }

@@ -5,7 +5,7 @@ from typing import Dict, Any, List
 import tempfile
 import shutil
 from contextlib import asynccontextmanager
-import resource  # Added for memory monitoring
+import signal
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,22 +13,30 @@ from fastapi.middleware.cors import CORSMiddleware
 import cv2
 from basketball_referee import ImprovedFreeThrowScorer, CVATDatasetConverter, FreeThrowModelTrainer
 
-# Configuration from environment variables
+# Configuration - Critical Railway Fixes
 MODEL_PATH = str(Path(__file__).parent / "models" / "best.pt")
-PORT = int(os.getenv('PORT', 8000))  # Railway provides this
+PORT = int(os.getenv('PORT', 8000))  # Must match Railway's expected port
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'production')
+
+# Disable signal handling for Railway
+SERVER_STATE = {"should_exit": False}
+
+
+def handle_exit(sig, frame):
+    SERVER_STATE["should_exit"] = True
+
 
 scorer_instance = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifespan context manager for startup and shutdown events."""
+    """Lifespan context manager with proper Railway handling."""
     global scorer_instance
 
-    # Print memory limits
-    soft, hard = resource.getrlimit(resource.RLIMIT_AS)
-    print(f"\nMemory limits - Soft: {soft}, Hard: {hard}")
+    # Setup signal handlers
+    signal.signal(signal.SIGTERM, handle_exit)
+    signal.signal(signal.SIGINT, handle_exit)
 
     print("\n" + "=" * 60)
     print("AI BASKETBALL REFEREE API STARTING")
@@ -36,6 +44,7 @@ async def lifespan(app: FastAPI):
     print(f"Environment: {ENVIRONMENT}")
     print(f"Python version: {sys.version}")
     print(f"Model path: {MODEL_PATH}")
+    print(f"Server port: {PORT}")  # Debug port
 
     if os.path.exists(MODEL_PATH):
         model_size = os.path.getsize(MODEL_PATH) / 1024 / 1024
@@ -46,16 +55,16 @@ async def lifespan(app: FastAPI):
             print("✅ Model loaded successfully!")
         except Exception as e:
             print(f"❌ Failed to load model: {e}")
-            import traceback
-            traceback.print_exc()
     else:
-        print("⚠️ Model file not found at the expected path!")
+        print("⚠️ Model file not found!")
 
     print("=" * 60 + "\n")
-    yield
-    print("\nShutting down...")
 
-# Create FastAPI app
+    yield
+
+    print("\nShutting down gracefully...")
+
+
 app = FastAPI(
     title="AI Basketball Referee API",
     version="1.0.0",
@@ -71,31 +80,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.get("/")
 async def root():
-    """Root endpoint with keep-alive check."""
+    """Enhanced health check endpoint."""
     return {
-        "status": "alive",
+        "status": "healthy",
         "model_loaded": scorer_instance is not None,
-        "message": "AI Basketball Referee API"
-    }
-
-
-@app.get("/health")
-async def health():
-    """Health check endpoint for monitoring."""
-    return {"status": "healthy", "model_loaded": scorer_instance is not None}
-
-
-@app.get("/model_status")
-async def model_status():
-    """Detailed model status."""
-    return {
-        "loaded": scorer_instance is not None,
-        "path": MODEL_PATH,
-        "exists": os.path.exists(MODEL_PATH),
-        "size_mb": os.path.getsize(MODEL_PATH) / 1024 / 1024 if os.path.exists(MODEL_PATH) else 0,
-        "environment": ENVIRONMENT
+        "server": "uvicorn",
+        "port": PORT
     }
 
 
@@ -329,4 +322,22 @@ async def train_model(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
+
+    config = uvicorn.Config(
+        app,
+        host="0.0.0.0",
+        port=PORT,
+        log_level="info",
+        timeout_keep_alive=60,
+        limit_max_requests=1000
+    )
+
+    server = uvicorn.Server(config)
+
+    try:
+        print(f"\n🚀 Starting server on port {PORT}")
+        server.run()
+    except Exception as e:
+        print(f"Server error: {e}")
+    finally:
+        print("Server shutdown complete")
