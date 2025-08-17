@@ -1,38 +1,23 @@
-FROM python:3.11-slim
+FROM python:3.9
 
 WORKDIR /app
 
-# Install system dependencies for OpenCV
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    libgomp1 \
-    libgcc-s1 \
-    libstdc++6 \
-    wget \
-    && rm -rf /var/lib/apt/lists/*
+# Update package sources and install dependencies
+RUN echo "deb http://deb.debian.org/debian bullseye main contrib non-free" > /etc/apt/sources.list && \
+    echo "deb http://deb.debian.org/debian-security bullseye-security main contrib non-free" >> /etc/apt/sources.list && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    libgl1-mesa-glx libglib2.0-0 libgomp1 libgcc-s1 libstdc++6 wget && \
+    rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
-COPY requirements.txt .
+# Create virtual environment
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+# Copy application code
+COPY . /app/.
 
-# Copy all application files
-COPY . .
-
-# Create models directory
-RUN mkdir -p /app/models
-
-# Set environment variables
-ENV PORT=8000
-ENV PYTHONUNBUFFERED=1
-ENV MODEL_PATH=/app/models/best.pt
-
-# Expose the port
-EXPOSE 8000
-
-# Run the application
-CMD ["python", "main.py"]
+# Upgrade pip and install requirements
+RUN --mount=type=cache,id=s/6c1ee794-6c5e-4780-8386-2e6f95186369-/root/cache/pip,target=/root/.cache/pip \
+    pip install --upgrade pip
+RUN --mount=type=cache,id=s/6c1ee794-6c5e-4780-8386-2e6f95186369-/root/cache/pip,target=/root/.cache/pip \
+    pip install -r requirements.txt
