@@ -6,6 +6,8 @@ import tempfile
 import shutil
 from contextlib import asynccontextmanager
 import signal
+import time
+import threading
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,15 +17,24 @@ from basketball_referee import ImprovedFreeThrowScorer, CVATDatasetConverter, Fr
 
 # Configuration - Critical Railway Fixes
 MODEL_PATH = str(Path(__file__).parent / "models" / "best.pt")
-PORT = int(os.getenv('PORT', 8000))  # Must match Railway's expected port
+PORT = int(os.getenv('PORT', 8000))  # Must use Railway's PORT
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'production')
 
-# Disable signal handling for Railway
-SERVER_STATE = {"should_exit": False}
+# Keep-alive mechanism
+keep_running = True
 
 
-def handle_exit(sig, frame):
-    SERVER_STATE["should_exit"] = True
+def handle_exit(signum, frame):
+    global keep_running
+    print(f"\nReceived signal {signum}, initiating graceful shutdown...")
+    keep_running = False
+
+
+def keep_alive():
+    """Background thread to keep the application alive"""
+    while keep_running:
+        time.sleep(5)
+        print("Keep-alive heartbeat", flush=True)
 
 
 scorer_instance = None
@@ -31,12 +42,15 @@ scorer_instance = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifespan context manager with proper Railway handling."""
-    global scorer_instance
+    """Enhanced lifespan with proper Railway handling."""
+    global scorer_instance, keep_running
 
     # Setup signal handlers
     signal.signal(signal.SIGTERM, handle_exit)
     signal.signal(signal.SIGINT, handle_exit)
+
+    # Start keep-alive thread
+    threading.Thread(target=keep_alive, daemon=True).start()
 
     print("\n" + "=" * 60)
     print("AI BASKETBALL REFEREE API STARTING")
@@ -62,7 +76,8 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    print("\nShutting down gracefully...")
+    print("\nInitiating graceful shutdown...")
+    keep_running = False
 
 
 app = FastAPI(
@@ -88,7 +103,8 @@ async def root():
         "status": "healthy",
         "model_loaded": scorer_instance is not None,
         "server": "uvicorn",
-        "port": PORT
+        "port": PORT,
+        "environment": ENVIRONMENT
     }
 
 
@@ -328,8 +344,9 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=PORT,
         log_level="info",
-        timeout_keep_alive=60,
-        limit_max_requests=1000
+        timeout_keep_alive=300,
+        limit_max_requests=10000,
+        workers=1
     )
 
     server = uvicorn.Server(config)
