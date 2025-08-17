@@ -28,7 +28,6 @@ async def lifespan(app: FastAPI):
     print("\n" + "=" * 60)
     print("AI BASKETBALL REFEREE API STARTING")
     print("=" * 60)
-    print(f"Environment: {ENVIRONMENT}")
     print(f"Python version: {sys.version}")
     print(f"Model path: {MODEL_PATH}")
 
@@ -78,7 +77,6 @@ async def root():
         "version": "1.0.0",
         "status": "ready" if scorer_instance is not None else "model not loaded",
         "model_loaded": scorer_instance is not None,
-        "environment": ENVIRONMENT,
         "endpoints": ["/", "/health", "/model_status", "/score_video/", "/upload_model/", "/docs"]
     }
 
@@ -97,7 +95,6 @@ async def model_status():
         "path": MODEL_PATH,
         "exists": os.path.exists(MODEL_PATH),
         "size_mb": os.path.getsize(MODEL_PATH) / 1024 / 1024 if os.path.exists(MODEL_PATH) else 0,
-        "environment": ENVIRONMENT
     }
 
 
@@ -336,6 +333,5 @@ if __name__ == "__main__":
     port = PORT
 
     print(f"Starting server on {host}:{port}")
-    print(f"Environment: {ENVIRONMENT}")
 
     uvicorn.run(app, host=host, port=port, log_level="info")
