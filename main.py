@@ -5,7 +5,6 @@ from typing import Dict, Any, List
 import tempfile
 import shutil
 from contextlib import asynccontextmanager
-import urllib.request
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,8 +13,9 @@ import cv2
 from basketball_referee import ImprovedFreeThrowScorer, CVATDatasetConverter, FreeThrowModelTrainer
 
 # Configuration from environment variables
-MODEL_PATH = os.getenv('MODEL_PATH', os.path.join(os.path.dirname(__file__), 'models', 'best.pt'))
-MODEL_URL = os.getenv('MODEL_URL', None)
+MODEL_PATH = str(Path(__file__).parent / "models" / "best.pt")  # Local model path
+PORT = int(os.getenv('PORT', 8000))
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'production')
 
 scorer_instance = None
 
@@ -28,16 +28,14 @@ async def lifespan(app: FastAPI):
     print("\n" + "=" * 60)
     print("AI BASKETBALL REFEREE API STARTING")
     print("=" * 60)
+    print(f"Environment: {ENVIRONMENT}")
     print(f"Python version: {sys.version}")
     print(f"Model path: {MODEL_PATH}")
 
     # Verify model exists
-    if not os.path.exists(MODEL_PATH):
-        print("⚠️ Model file not found at the expected path!")
-        print("=" * 60 + "\n")
-    else:
+    if os.path.exists(MODEL_PATH):
         model_size = os.path.getsize(MODEL_PATH) / 1024 / 1024
-        print(f"Model size: {model_size:.2f} MB")
+        print(f"Model found! Size: {model_size:.2f} MB")
         try:
             print("Loading model...")
             scorer_instance = ImprovedFreeThrowScorer(MODEL_PATH)
@@ -46,6 +44,9 @@ async def lifespan(app: FastAPI):
             print(f"❌ Failed to load model: {e}")
             import traceback
             traceback.print_exc()
+    else:
+        print("⚠️ Model file not found at the expected path!")
+        print("Please ensure the model is at:", MODEL_PATH)
 
     print("=" * 60 + "\n")
     yield
@@ -77,6 +78,7 @@ async def root():
         "version": "1.0.0",
         "status": "ready" if scorer_instance is not None else "model not loaded",
         "model_loaded": scorer_instance is not None,
+        "environment": ENVIRONMENT,
         "endpoints": ["/", "/health", "/model_status", "/score_video/", "/upload_model/", "/docs"]
     }
 
@@ -95,6 +97,7 @@ async def model_status():
         "path": MODEL_PATH,
         "exists": os.path.exists(MODEL_PATH),
         "size_mb": os.path.getsize(MODEL_PATH) / 1024 / 1024 if os.path.exists(MODEL_PATH) else 0,
+        "environment": ENVIRONMENT
     }
 
 
@@ -207,7 +210,7 @@ async def score_video(video_file: UploadFile = File(...)) -> Dict[str, Any]:
         print(f"Processing complete. Frames: {frame_count}")
 
         accuracy = (
-                    scorer_instance.made_shots / scorer_instance.shot_attempts * 100) if scorer_instance.shot_attempts > 0 else 0
+                scorer_instance.made_shots / scorer_instance.shot_attempts * 100) if scorer_instance.shot_attempts > 0 else 0
 
         return {
             "made_shots": scorer_instance.made_shots,
@@ -333,5 +336,6 @@ if __name__ == "__main__":
     port = PORT
 
     print(f"Starting server on {host}:{port}")
+    print(f"Environment: {ENVIRONMENT}")
 
     uvicorn.run(app, host=host, port=port, log_level="info")

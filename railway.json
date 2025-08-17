@@ -12,17 +12,8 @@
     "healthcheckTimeout": 30
   },
   "variables": {
-    "PORT": {
-      "description": "Port the application will run on",
-      "value": "8000"
-    },
-    "ENVIRONMENT": {
-      "description": "Application environment",
-      "value": "production"
-    },
-    "YOLO_CONFIG_DIR": {
-      "description": "Configuration directory for Ultralytics",
-      "value": "/tmp"
-    }
+    "PORT": "8000",
+    "ENVIRONMENT": "production",
+    "YOLO_CONFIG_DIR": "/tmp"
   }
 }
