@@ -20,9 +20,9 @@ wheels/
 *.egg
 MANIFEST
 .env
-*.pt
+#*.pt
 *.pth
-models/
+#models/
 freethrow_training/
 runs/
 .DS_Store

@@ -13,20 +13,15 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application files
+# Copy entire application including models
 COPY . .
 
-# Create models directory if it doesn't exist
-RUN mkdir -p /app/models
-
-# Download model if MODEL_URL is provided
-ARG MODEL_URL
-RUN if [ -n "$MODEL_URL" ]; then \
-    wget -O /app/models/best.pt "$MODEL_URL"; \
-    fi
+# Set environment variables for Ultralytics
+ENV YOLO_CONFIG_DIR=/tmp
+ENV TMPDIR=/tmp
 
 # Expose the port the app runs on
-EXPOSE 8000
+EXPOSE 8080
 
 # Run the application
 CMD ["python", "main.py"]

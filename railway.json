@@ -16,14 +16,13 @@
       "description": "Port the application will run on",
       "value": "8000"
     },
-    "MODEL_URL": {
-      "description": "URL to download the model from",
-      "value": "https://drive.google.com/uc?export=download&id=1gFM7iLnI_ea330JrG6LlZPKLIFu4Luj6",
-      "required": false
-    },
     "ENVIRONMENT": {
       "description": "Application environment",
       "value": "production"
+    },
+    "YOLO_CONFIG_DIR": {
+      "description": "Configuration directory for Ultralytics",
+      "value": "/tmp"
     }
   }
 }

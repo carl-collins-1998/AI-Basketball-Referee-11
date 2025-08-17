@@ -14,37 +14,10 @@ import cv2
 from basketball_referee import ImprovedFreeThrowScorer, CVATDatasetConverter, FreeThrowModelTrainer
 
 # Configuration from environment variables
-MODEL_PATH = os.getenv('MODEL_PATH', '/app/models/best.pt')
-MODEL_URL = os.getenv('MODEL_URL', 'https://drive.google.com/uc?export=download&id=1gFM7iLnI_ea330JrG6LlZPKLIFu4Luj6')
-PORT = int(os.getenv('PORT', 8000))
-ENVIRONMENT = os.getenv('ENVIRONMENT', 'production')
+MODEL_PATH = os.getenv('MODEL_PATH', os.path.join(os.path.dirname(__file__), 'models', 'best.pt'))
+MODEL_URL = os.getenv('MODEL_URL', None)
 
 scorer_instance = None
-
-
-def download_model():
-    """Download model if not present and URL is provided"""
-    if not os.path.exists(MODEL_PATH) and MODEL_URL:
-        print(f"Downloading model from {MODEL_URL}...")
-        os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
-        try:
-            # Try to download the model
-            urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
-            print(f"Model downloaded successfully to {MODEL_PATH}")
-            # Check file size
-            size_mb = os.path.getsize(MODEL_PATH) / 1024 / 1024
-            print(f"Model size: {size_mb:.2f} MB")
-            if size_mb < 1:  # If file is too small, it might be an error page
-                print("Warning: Model file seems too small. It might not have downloaded correctly.")
-                os.remove(MODEL_PATH)
-                return False
-            return True
-        except Exception as e:
-            print(f"Failed to download model: {e}")
-            if os.path.exists(MODEL_PATH):
-                os.remove(MODEL_PATH)
-            return False
-    return os.path.exists(MODEL_PATH)
 
 
 @asynccontextmanager
@@ -58,21 +31,14 @@ async def lifespan(app: FastAPI):
     print(f"Environment: {ENVIRONMENT}")
     print(f"Python version: {sys.version}")
     print(f"Model path: {MODEL_PATH}")
-    print(f"Model URL: {MODEL_URL}")
 
-    # Try to download model if needed
+    # Verify model exists
     if not os.path.exists(MODEL_PATH):
-        print("Model not found locally, attempting download...")
-        download_model()
-
-    print(f"Model exists: {os.path.exists(MODEL_PATH)}")
-
-    if not os.path.exists(MODEL_PATH):
-        print("⚠️ Model file not found!")
-        print("The API will start but won't be able to process videos.")
-        print("You can upload a model using the /upload_model/ endpoint")
+        print("⚠️ Model file not found at the expected path!")
         print("=" * 60 + "\n")
     else:
+        model_size = os.path.getsize(MODEL_PATH) / 1024 / 1024
+        print(f"Model size: {model_size:.2f} MB")
         try:
             print("Loading model...")
             scorer_instance = ImprovedFreeThrowScorer(MODEL_PATH)
@@ -83,9 +49,7 @@ async def lifespan(app: FastAPI):
             traceback.print_exc()
 
     print("=" * 60 + "\n")
-
     yield
-
     print("\nShutting down...")
 
 
