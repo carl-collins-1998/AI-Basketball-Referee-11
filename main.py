@@ -8,16 +8,20 @@ from contextlib import asynccontextmanager
 import signal
 import time
 import threading
-
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import (
+    get_redoc_html,
+    get_swagger_ui_html,
+    get_swagger_ui_oauth2_redirect_html,
+)
 
 import cv2
 from basketball_referee import ImprovedFreeThrowScorer, CVATDatasetConverter, FreeThrowModelTrainer
 
-# Configuration - Critical Railway Fixes
+# Configuration
 MODEL_PATH = str(Path(__file__).parent / "models" / "best.pt")
-PORT = int(os.getenv('PORT', 8000))  # Must use Railway's PORT
+PORT = int(os.getenv('PORT', 8000))
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'production')
 
 # Keep-alive mechanism
@@ -58,7 +62,7 @@ async def lifespan(app: FastAPI):
     print(f"Environment: {ENVIRONMENT}")
     print(f"Python version: {sys.version}")
     print(f"Model path: {MODEL_PATH}")
-    print(f"Server port: {PORT}")  # Debug port
+    print(f"Server port: {PORT}")
 
     if os.path.exists(MODEL_PATH):
         model_size = os.path.getsize(MODEL_PATH) / 1024 / 1024
@@ -84,6 +88,8 @@ app = FastAPI(
     title="AI Basketball Referee API",
     version="1.0.0",
     description="Automated basketball free throw detection and scoring",
+    docs_url=None,  # Disable default docs
+    redoc_url=None,  # Disable default redoc
     lifespan=lifespan
 )
 
@@ -96,14 +102,58 @@ app.add_middleware(
 )
 
 
+# Custom docs endpoints
+@app.get("/docs", include_in_schema=False)
+async def custom_swagger_ui_html():
+    return get_swagger_ui_html(
+        openapi_url=app.openapi_url,
+        title=app.title + " - Swagger UI",
+        oauth2_redirect_url=app.swagger_ui_oauth2_redirect_url,
+        swagger_js_url="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js",
+        swagger_css_url="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css",
+    )
+
+
+@app.get(app.swagger_ui_oauth2_redirect_url, include_in_schema=False)
+async def swagger_ui_redirect():
+    return get_swagger_ui_oauth2_redirect_html()
+
+
+@app.get("/redoc", include_in_schema=False)
+async def redoc_html():
+    return get_redoc_html(
+        openapi_url=app.openapi_url,
+        title=app.title + " - ReDoc",
+        redoc_js_url="https://unpkg.com/redoc@next/bundles/redoc.standalone.js",
+    )
+
+
 @app.get("/")
 async def root():
-    """Enhanced health check endpoint."""
+    """Health check endpoint."""
     return {
         "status": "healthy",
         "model_loaded": scorer_instance is not None,
         "server": "uvicorn",
         "port": PORT,
+        "environment": ENVIRONMENT
+    }
+
+
+@app.get("/health")
+async def health():
+    """Health check endpoint for monitoring."""
+    return {"status": "healthy", "model_loaded": scorer_instance is not None}
+
+
+@app.get("/model_status")
+async def model_status():
+    """Detailed model status."""
+    return {
+        "loaded": scorer_instance is not None,
+        "path": MODEL_PATH,
+        "exists": os.path.exists(MODEL_PATH),
+        "size_mb": os.path.getsize(MODEL_PATH) / 1024 / 1024 if os.path.exists(MODEL_PATH) else 0,
         "environment": ENVIRONMENT
     }
 
