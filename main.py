@@ -10,6 +10,8 @@ import time
 import threading
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.openapi.docs import (
     get_redoc_html,
     get_swagger_ui_html,
@@ -27,12 +29,10 @@ ENVIRONMENT = os.getenv('ENVIRONMENT', 'production')
 # Keep-alive mechanism
 keep_running = True
 
-
 def handle_exit(signum, frame):
     global keep_running
     print(f"\nReceived signal {signum}, initiating graceful shutdown...")
     keep_running = False
-
 
 def keep_alive():
     """Background thread to keep the application alive"""
@@ -40,9 +40,7 @@ def keep_alive():
         time.sleep(5)
         print("Keep-alive heartbeat", flush=True)
 
-
 scorer_instance = None
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -83,7 +81,6 @@ async def lifespan(app: FastAPI):
     print("\nInitiating graceful shutdown...")
     keep_running = False
 
-
 app = FastAPI(
     title="AI Basketball Referee API",
     version="1.0.0",
@@ -93,6 +90,9 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Serve static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -101,7 +101,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # Custom docs endpoints
 @app.get("/docs", include_in_schema=False)
 async def custom_swagger_ui_html():
@@ -109,42 +108,31 @@ async def custom_swagger_ui_html():
         openapi_url=app.openapi_url,
         title=app.title + " - Swagger UI",
         oauth2_redirect_url=app.swagger_ui_oauth2_redirect_url,
-        swagger_js_url="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js",
-        swagger_css_url="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css",
+        swagger_js_url="/static/js/swagger-ui-bundle.js",
+        swagger_css_url="/static/css/swagger-ui.css",
     )
-
 
 @app.get(app.swagger_ui_oauth2_redirect_url, include_in_schema=False)
 async def swagger_ui_redirect():
     return get_swagger_ui_oauth2_redirect_html()
-
 
 @app.get("/redoc", include_in_schema=False)
 async def redoc_html():
     return get_redoc_html(
         openapi_url=app.openapi_url,
         title=app.title + " - ReDoc",
-        redoc_js_url="https://unpkg.com/redoc@next/bundles/redoc.standalone.js",
+        redoc_js_url="/static/js/redoc.standalone.js",
     )
 
+@app.get("/", response_class=HTMLResponse)
+async def serve_web_interface():
+    return FileResponse('static/index.html')
 
-@app.get("/")
-async def root():
-    """Health check endpoint."""
-    return {
-        "status": "healthy",
-        "model_loaded": scorer_instance is not None,
-        "server": "uvicorn",
-        "port": PORT,
-        "environment": ENVIRONMENT
-    }
-
-
+# Existing API endpoints remain the same...
 @app.get("/health")
 async def health():
     """Health check endpoint for monitoring."""
     return {"status": "healthy", "model_loaded": scorer_instance is not None}
-
 
 @app.get("/model_status")
 async def model_status():
@@ -156,7 +144,6 @@ async def model_status():
         "size_mb": os.path.getsize(MODEL_PATH) / 1024 / 1024 if os.path.exists(MODEL_PATH) else 0,
         "environment": ENVIRONMENT
     }
-
 
 @app.post("/upload_model/")
 async def upload_model(model_file: UploadFile = File(...)):
@@ -190,7 +177,6 @@ async def upload_model(model_file: UploadFile = File(...)):
         print(f"❌ Failed to load uploaded model: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
 
-
 @app.post("/score_video/")
 async def score_video(video_file: UploadFile = File(...)) -> Dict[str, Any]:
     """Analyzes an uploaded video to detect and score free throws."""
@@ -210,7 +196,7 @@ async def score_video(video_file: UploadFile = File(...)) -> Dict[str, Any]:
         content = await video_file.read()
         with open(video_path, "wb") as f:
             f.write(content)
-        print(f"Video saved: {len(content) / 1024 / 1024:.2f} MB")
+        print(f"Video saved: {len(content) / 1024 / 1024:.2f} MB)")
 
         # Reset scorer
         scorer_instance.made_shots = 0
@@ -276,7 +262,6 @@ async def score_video(video_file: UploadFile = File(...)) -> Dict[str, Any]:
             "accuracy_percentage": round(accuracy, 1),
             "frames_processed": frame_count
         }
-
 
 @app.post("/train_model/")
 async def train_model(
@@ -384,7 +369,6 @@ async def train_model(
             import traceback
             traceback.print_exc()
             raise HTTPException(status_code=500, detail=f"Model training failed: {str(e)}")
-
 
 if __name__ == "__main__":
     import uvicorn

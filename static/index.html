@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Basketball Referee</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏀 AI Basketball Referee</h1>
+            <p>Automated free throw scoring and model training</p>
+        </div>
+
+        <div class="main-content">
+            <div class="status-section">
+                <div class="status-indicator">
+                    <span class="status-dot offline" id="statusDot"></span>
+                    <span id="statusText">Checking API status...</span>
+                </div>
+            </div>
+
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('analyze')">
+                    📊 Analyze Video
+                </button>
+                <button class="tab" onclick="switchTab('train')">
+                    🎯 Train Model
+                </button>
+            </div>
+
+            <!-- Analyze Video Tab -->
+            <div id="analyzeTab" class="tab-content active">
+                <div class="upload-section" id="uploadSection">
+                    <div class="basketball-icon">🏀</div>
+                    <h2>Upload Basketball Video</h2>
+                    <p style="margin: 20px 0; color: #666;">
+                        Drag and drop your video here or click to browse
+                    </p>
+                    <button class="upload-button" id="uploadButton">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        Choose Video
+                    </button>
+                    <input type="file" id="fileInput" class="file-input" accept="video/*">
+                    <p style="margin-top: 20px; color: #999; font-size: 14px;">
+                        Supported formats: MP4, AVI, MOV, etc.
+                    </p>
+                </div>
+
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <h3>Analyzing Video...</h3>
+                    <p>This may take a few moments depending on video length</p>
+                </div>
+
+                <div class="results-section" id="resultsSection">
+                    <h2>📊 Analysis Results</h2>
+                    <div class="results-grid">
+                        <div class="result-card">
+                            <div class="label">Made Shots</div>
+                            <div class="value" id="madeShots">0</div>
+                        </div>
+                        <div class="result-card">
+                            <div class="label">Missed Shots</div>
+                            <div class="value" id="missedShots">0</div>
+                        </div>
+                        <div class="result-card">
+                            <div class="label">Total Attempts</div>
+                            <div class="value" id="totalAttempts">0</div>
+                        </div>
+                        <div class="result-card">
+                            <div class="label">Accuracy</div>
+                            <div class="value" id="accuracy">0%</div>
+                        </div>
+                    </div>
+                    <button class="upload-button" style="margin-top: 30px;" onclick="resetUpload()">
+                        Analyze Another Video
+                    </button>
+                </div>
+            </div>
+
+            <!-- Train Model Tab -->
+            <div id="trainTab" class="tab-content">
+                <div class="training-form">
+                    <h2>🎯 Train New Model</h2>
+                    <p style="margin-bottom: 30px; color: #666;">
+                        Upload CVAT YOLO 1.1 annotated datasets to train a new basketball referee model
+                    </p>
+
+                    <div class="form-group">
+                        <label for="datasetFiles">Training Datasets (ZIP files)</label>
+                        <input type="file" id="datasetFiles" multiple accept=".zip" onchange="handleDatasetFiles(event)">
+                        <p class="help-text">Select one or more CVAT YOLO 1.1 exported ZIP files</p>
+                    </div>
+
+                    <div class="file-list" id="fileList"></div>
+
+                    <div class="form-group">
+                        <label for="epochs">Training Epochs</label>
+                        <input type="number" id="epochs" value="150" min="1" max="1000">
+                        <p class="help-text">Number of training iterations (default: 150)</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="batchSize">Batch Size</label>
+                        <input type="number" id="batchSize" value="16" min="1" max="128">
+                        <p class="help-text">Training batch size (default: 16)</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="modelSize">Model Size</label>
+                        <select id="modelSize">
+                            <option value="n">Nano (fastest, least accurate)</option>
+                            <option value="s" selected>Small (balanced)</option>
+                            <option value="m">Medium (slower, more accurate)</option>
+                            <option value="l">Large (slowest, most accurate)</option>
+                        </select>
+                        <p class="help-text">YOLO model size - larger models are more accurate but slower</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="device">Training Device</label>
+                        <select id="device">
+                            <option value="auto" selected>Auto (recommended)</option>
+                            <option value="cpu">CPU</option>
+                            <option value="cuda">GPU (CUDA)</option>
+                        </select>
+                        <p class="help-text">Device for training - GPU is much faster if available</p>
+                    </div>
+
+                    <button class="upload-button" id="trainButton" onclick="startTraining()" disabled>
+                        🚀 Start Training
+                    </button>
+
+                    <div class="training-progress" id="trainingProgress">
+                        <h3>Training Progress</h3>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFill">0%</div>
+                        </div>
+                        <p id="progressText">Preparing training...</p>
+                    </div>
+
+                    <div class="model-info" id="modelInfo">
+                        <h3>✅ Training Complete!</h3>
+                        <div id="modelMetrics"></div>
+                        <button class="upload-button" style="margin-top: 20px;" onclick="resetTraining()">
+                            Train Another Model
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="error-message" id="errorMessage"></div>
+            <div class="success-message" id="successMessage"></div>
+        </div>
+
+        <div class="footer">
+            <p>AI Basketball Referee API v1.0</p>
+            <p style="margin-top: 10px; font-size: 14px;">
+                <a href="/docs" target="_blank" style="color: white; text-decoration: underline;">
+                    API Documentation
+                </a>
+            </p>
+        </div>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
