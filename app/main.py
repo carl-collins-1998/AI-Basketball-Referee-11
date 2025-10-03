@@ -8,7 +8,6 @@ import uuid
 import math
 import cv2
 import numpy as np
-import time
 
 # Try to import YOLO from ultralytics, set flag if available
 try:
@@ -31,11 +30,13 @@ app.add_middleware(
 # Serve static files (UI) from /static and index at /
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Optional configuration via env vars
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/tmp/air_uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 MODEL_PATH = os.environ.get("MODEL_PATH", "models/best.pt")
 MODEL_USE = os.environ.get("MODEL_USE", "yolo")  # 'yolo' or 'naive'
+HOOP_LINE_RATIO = float(os.environ.get("HOOP_LINE_RATIO", "0.4"))
 
 # If ultralytics is available and model file exists, load it at startup
 MODEL = None
@@ -44,6 +45,13 @@ if ULTRALYTICS_AVAILABLE and os.path.exists(MODEL_PATH) and MODEL_USE == 'yolo':
         MODEL = YOLO(MODEL_PATH)
     except Exception:
         MODEL = None
+
+# Include async router if available
+try:
+    from app.async_endpoints import router as async_router
+    app.include_router(async_router)
+except Exception:
+    pass
 
 @app.get("/")
 async def root():
@@ -64,21 +72,22 @@ def analyze_with_yolo_and_tracking(video_path: str, sample_rate: int = 3, class_
         raise RuntimeError("Could not open video file")
 
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+    height = int(cap.get(cv2.CAP_FRAME_HEIGHT) or 0) if False else None
+    # Use correct property for height
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
     if height == 0:
         height = 720
     if width == 0:
         width = 1280
 
-    hoop_line_y = int(height * 0.4)
+    hoop_line_y = int(height * HOOP_LINE_RATIO)
 
-    tracks = {}  # id -> {centroid, ys:[], last_seen_frame, disappeared_count, scored}
+    tracks = {}
     next_track_id = 1
     max_distance = max(50, int(min(width, height) * 0.08))
-    disappear_tolerance = 8  # frames before considering gone
+    disappear_tolerance = 8
 
     frame_idx = 0
-    # We'll collect events per track to decide made/missed
     attempts = 0
     made = 0
     missed = 0
@@ -98,16 +107,13 @@ def analyze_with_yolo_and_tracking(video_path: str, sample_rate: int = 3, class_
             frame_idx += 1
             continue
 
-        # Run detection (ultralytics YOLO accepts numpy array)
         try:
             results = MODEL(frame)
-        except Exception as e:
-            # If detection fails, skip frame
+        except Exception:
             frame_idx += 1
             continue
 
-        detections = []  # list of (cx, cy, conf)
-        # results may be a list-like; take first
+        detections = []
         res0 = results[0]
         boxes = getattr(res0, 'boxes', None)
         if boxes is not None:
@@ -116,7 +122,6 @@ def analyze_with_yolo_and_tracking(video_path: str, sample_rate: int = 3, class_
                 confs = boxes.conf.cpu().numpy() if hasattr(boxes.conf, 'cpu') else np.array(boxes.conf)
                 classes = boxes.cls.cpu().numpy() if hasattr(boxes.cls, 'cpu') else np.array(boxes.cls)
             except Exception:
-                # fallback: iterate boxes
                 xyxy = []
                 confs = []
                 classes = []
@@ -135,7 +140,6 @@ def analyze_with_yolo_and_tracking(video_path: str, sample_rate: int = 3, class_
             for i, box in enumerate(xyxy):
                 conf = float(confs[i]) if i < len(confs) else 0.0
                 cls = int(classes[i]) if i < len(classes) else 0
-                # If model provides names, try to filter by class name hint
                 if model_names is not None and class_name_hint is not None:
                     name = model_names.get(cls) if isinstance(model_names, dict) else (model_names[cls] if cls < len(model_names) else None)
                     if name is not None and class_name_hint.lower() not in str(name).lower():
@@ -145,14 +149,10 @@ def analyze_with_yolo_and_tracking(video_path: str, sample_rate: int = 3, class_
                 cy = int((y1 + y2) / 2)
                 detections.append((cx, cy, conf))
 
-        # Simple greedy nearest-centroid tracker
-        assigned = set()
-        det_centroids = [(d[0], d[1]) for d in detections]
-        # Build distance matrix
         for tid, tr in list(tracks.items()):
             tr['assigned'] = False
 
-        for det_idx, (cx, cy) in enumerate(det_centroids):
+        for det_idx, (cx, cy, _) in enumerate(detections):
             best_id = None
             best_dist = None
             for tid, tr in tracks.items():
@@ -162,15 +162,12 @@ def analyze_with_yolo_and_tracking(video_path: str, sample_rate: int = 3, class_
                     best_dist = dist
                     best_id = tid
             if best_id is not None:
-                # assign to track
                 tracks[best_id]['centroid'] = (cx, cy)
                 tracks[best_id]['ys'].append((frame_idx, cy))
                 tracks[best_id]['last_seen_frame'] = frame_idx
                 tracks[best_id]['disappeared_count'] = 0
                 tracks[best_id]['assigned'] = True
-                assigned.add(det_idx)
             else:
-                # create new track
                 tracks[next_track_id] = {
                     'centroid': (cx, cy),
                     'ys': [(frame_idx, cy)],
@@ -180,34 +177,25 @@ def analyze_with_yolo_and_tracking(video_path: str, sample_rate: int = 3, class_
                 }
                 next_track_id += 1
 
-        # Any existing tracks not assigned -> increase disappeared_count
         to_delete = []
         for tid, tr in list(tracks.items()):
             if not tr.get('assigned', False):
                 tr['disappeared_count'] = tr.get('disappeared_count', 0) + 1
-            # check scoring logic only once per track when crossing happens
             ys = [y for (_f, y) in tr['ys']]
             if not tr.get('scored', False) and len(ys) >= 2:
-                # check for downward crossing
                 for i in range(1, len(ys)):
                     prev_y = ys[i-1]
                     cur_y = ys[i]
                     if prev_y is not None and cur_y is not None and prev_y < hoop_line_y and cur_y >= hoop_line_y:
-                        # attempt detected
                         attempts += 1
-                        # if track disappears soon after crossing, assume it went through
-                        # if it remains visible for some frames, assume missed
-                        # We will decide when it disappears or at end of video
                         tr['crossed_at_frame'] = tr['ys'][i][0]
                         tr['scored'] = 'pending'
                         break
 
-            # if track was pending and disappeared -> made
             if tr.get('scored') == 'pending' and tr.get('disappeared_count', 0) >= disappear_tolerance:
                 made += 1
                 tr['scored'] = True
 
-            # prune very old tracks
             if tr.get('disappeared_count', 0) > (disappear_tolerance * 10):
                 to_delete.append(tid)
 
@@ -216,7 +204,6 @@ def analyze_with_yolo_and_tracking(video_path: str, sample_rate: int = 3, class_
 
         frame_idx += 1
 
-    # After all frames, any pending tracks -> consider missed if still present
     for tid, tr in tracks.items():
         if tr.get('scored') == 'pending':
             missed += 1
@@ -243,7 +230,7 @@ def analyze_video_naive(video_path: str, sample_rate: int = 3):
     if width == 0:
         width = 1280
 
-    hoop_line_y = int(height * 0.4)
+    hoop_line_y = int(height * HOOP_LINE_RATIO)
 
     backSub = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=50, detectShadows=False)
 
