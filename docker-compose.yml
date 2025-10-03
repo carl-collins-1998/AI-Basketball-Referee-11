@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  ai-basketball-referee:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=development
+    volumes:
+      - .:/app
+    restart: unless-stopped

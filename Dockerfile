@@ -1,60 +1,49 @@
-name: Build and Publish Docker image
+FROM python:3.11-slim
 
-on:
-  push:
-    branches:
-      - main
+# Set Python environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app
 
-jobs:
-  build-and-publish:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+# Set working directory
+WORKDIR /app
 
-      - name: Set up QEMU (optional for multi-arch)
-        uses: docker/setup-qemu-action@v2
+# Install system dependencies for OpenCV, video processing, and build tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    build-essential \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+# Copy requirements first for better Docker layer caching
+COPY requirements.txt .
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+# Install Python dependencies
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-      # Optional: Docker Hub login if you prefer (requires DOCKERHUB_USERNAME & DOCKERHUB_TOKEN secrets)
-      - name: Login to Docker Hub (optional)
-        if: ${{ secrets.DOCKERHUB_USERNAME && secrets.DOCKERHUB_TOKEN }}
-        uses: docker/login-action@v2
-        with:
-          registry: docker.io
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+# Copy application code
+COPY . .
 
-      - name: Build and push to GHCR
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/ai-basketball-referee:${{ github.sha }}
-            ghcr.io/${{ github.repository_owner }}/ai-basketball-referee:latest
-          platforms: linux/amd64,linux/arm64
+# Create a non-root user for security
+RUN groupadd -r appuser && useradd -r -g appuser appuser && \
+    chown -R appuser:appuser /app
+USER appuser
 
-      - name: Optionally push tag to Docker Hub
-        if: ${{ secrets.DOCKERHUB_USERNAME && secrets.DOCKERHUB_TOKEN }}
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/ai-basketball-referee:${{ github.sha }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/ai-basketball-referee:latest
-          platforms: linux/amd64,linux/arm64
+# Expose port (adjust based on your application)
+EXPOSE 8000
+
+# Health check (adjust based on your application)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:8000/health', timeout=2)" || exit 1
+
+# Set the default command (adjust based on your application)
+CMD ["python", "app.py"]

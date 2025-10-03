@@ -14,5 +14,5 @@ aiofiles==23.2.1
 mediapipe>=0.9.0
 matplotlib>=3.5.0
 tqdm>=4.62.0
-redis==4.6.0
+redis>=4.6.0
 rq==1.13.0
