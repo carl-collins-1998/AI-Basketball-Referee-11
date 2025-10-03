@@ -1,174 +1,379 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Basketball Referee</title>
-    <link rel="stylesheet" href="/static/css/styles.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AI Basketball Referee</title>
+  <link rel="stylesheet" href="/static/css/styles.css">
+  <style>
+    /* Lightweight improvements if styles.css is missing or partial */
+    :root {
+      --bg:#0f1724; --card:#0b1220; --accent:#ff7a18; --muted:#9aa7b2; --ok:#22c55e; --danger:#ef4444;
+      --glass: rgba(255,255,255,0.03);
+    }
+    html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial;}
+    body{background: linear-gradient(180deg,#071025 0%, #061526 100%); color:#e6eef6; display:flex; align-items:center; justify-content:center; padding:32px;}
+    .wrap{width:100%;max-width:1100px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:12px;padding:24px;box-shadow:0 10px 30px rgba(2,6,23,0.6);} 
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
+    header h1{font-size:20px;margin:0;display:flex;align-items:center;gap:10px}
+    header p{margin:0;color:var(--muted);font-size:13px}
+    .status {display:flex;gap:12px;align-items:center}
+    .status-dot{width:12px;height:12px;border-radius:50%;background:var(--danger);box-shadow:0 0 8px rgba(239,68,68,0.25)}
+    .status-online{background:var(--ok);box-shadow:0 0 10px rgba(34,197,94,0.25)}
+    .tabs{display:flex;gap:8px;margin:18px 0;}
+    .tab{background:var(--glass);padding:10px 14px;border-radius:8px;color:var(--muted);cursor:pointer;border:1px solid rgba(255,255,255,0.03)}
+    .tab.active{background:linear-gradient(90deg,var(--accent),#ffb76b);color:#06101a;font-weight:700}
+    .grid{display:grid;grid-template-columns:1fr 360px;gap:20px}
+    .card{background:rgba(255,255,255,0.02);padding:18px;border-radius:10px;border:1px solid rgba(255,255,255,0.02)}
+    .uploader{display:flex;flex-direction:column;align-items:center;gap:12px;padding:28px;border:2px dashed rgba(255,255,255,0.03);border-radius:10px;text-align:center}
+    .btn{background:var(--accent);color:#06101a;padding:10px 14px;border-radius:9px;border:none;cursor:pointer;font-weight:700}
+    .btn.secondary{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+    .small{font-size:13px;color:var(--muted)}
+    .results-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:12px}
+    .result{background:rgba(255,255,255,0.01);padding:12px;border-radius:8px;text-align:center}
+    .result .value{font-size:20px;font-weight:800}
+    .preview{width:100%;height:220px;background:#061426;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--muted);overflow:hidden}
+    .progress{height:14px;background:rgba(255,255,255,0.03);border-radius:999px;overflow:hidden;margin-top:10px}
+    .progress > i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#ffb76b);width:0%;text-align:center;font-size:11px;color:#06101a}
+    .error{color:var(--danger);margin-top:10px}
+    .success{color:var(--ok);margin-top:10px}
+    .form-row{display:flex;gap:8px;align-items:center}
+    .form-row label{min-width:110px;color:var(--muted);font-size:14px}
+    input[type=number], select{background:transparent;border:1px solid rgba(255,255,255,0.04);color:inherit;padding:8px;border-radius:8px}
+    .preview{height:220px}
+    .muted-block{color:var(--muted);font-size:13px}
+    @media (max-width:980px){ .grid{grid-template-columns:1fr} .preview{height:180px} }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🏀 AI Basketball Referee</h1>
-            <p>Automated free throw scoring and model training</p>
+  <div class="wrap" role="main">
+    <header>
+      <div>
+        <h1>🏀 AI Basketball Referee</h1>
+        <p>Analyze free-throws and training jobs — powered by your deployed model</p>
+      </div>
+      <div class="status" aria-live="polite">
+        <div id="statusDot" class="status-dot" title="API status"></div>
+        <div>
+          <div id="statusText" class="small">Checking API...</div>
+          <div id="statusDetails" class="muted-block">v1 • model: unknown</div>
         </div>
+      </div>
+    </header>
 
-        <div class="main-content">
-            <div class="status-section">
-                <div class="status-indicator">
-                    <span class="status-dot offline" id="statusDot"></span>
-                    <span id="statusText">Checking API status...</span>
-                </div>
-            </div>
-
-            <div class="tabs">
-                <button class="tab active" onclick="switchTab('analyze')">
-                    📊 Analyze Video
-                </button>
-                <button class="tab" onclick="switchTab('train')">
-                    🎯 Train Model
-                </button>
-            </div>
-
-            <!-- Analyze Video Tab -->
-            <div id="analyzeTab" class="tab-content active">
-                <div class="upload-section" id="uploadSection">
-                    <div class="basketball-icon">🏀</div>
-                    <h2>Upload Basketball Video</h2>
-                    <p style="margin: 20px 0; color: #666;">
-                        Drag and drop your video here or click to browse
-                    </p>
-                    <button class="upload-button" id="uploadButton">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                            <polyline points="7 10 12 15 17 10"></polyline>
-                            <line x1="12" y1="15" x2="12" y2="3"></line>
-                        </svg>
-                        Choose Video
-                    </button>
-                    <input type="file" id="fileInput" class="file-input" accept="video/*">
-                    <p style="margin-top: 20px; color: #999; font-size: 14px;">
-                        Supported formats: MP4, AVI, MOV, etc.
-                    </p>
-                </div>
-
-                <div class="loading" id="loading">
-                    <div class="spinner"></div>
-                    <h3>Analyzing Video...</h3>
-                    <p>This may take a few moments depending on video length</p>
-                </div>
-
-                <div class="results-section" id="resultsSection">
-                    <h2>📊 Analysis Results</h2>
-                    <div class="results-grid">
-                        <div class="result-card">
-                            <div class="label">Made Shots</div>
-                            <div class="value" id="madeShots">0</div>
-                        </div>
-                        <div class="result-card">
-                            <div class="label">Missed Shots</div>
-                            <div class="value" id="missedShots">0</div>
-                        </div>
-                        <div class="result-card">
-                            <div class="label">Total Attempts</div>
-                            <div class="value" id="totalAttempts">0</div>
-                        </div>
-                        <div class="result-card">
-                            <div class="label">Accuracy</div>
-                            <div class="value" id="accuracy">0%</div>
-                        </div>
-                    </div>
-                    <button class="upload-button" style="margin-top: 30px;" onclick="resetUpload()">
-                        Analyze Another Video
-                    </button>
-                </div>
-            </div>
-
-            <!-- Train Model Tab -->
-            <div id="trainTab" class="tab-content">
-                <div class="training-form">
-                    <h2>🎯 Train New Model</h2>
-                    <p style="margin-bottom: 30px; color: #666;">
-                        Upload CVAT YOLO 1.1 annotated datasets to train a new basketball referee model
-                    </p>
-
-                    <div class="form-group">
-                        <label for="datasetFiles">Training Datasets (ZIP files)</label>
-                        <input type="file" id="datasetFiles" multiple accept=".zip" onchange="handleDatasetFiles(event)">
-                        <p class="help-text">Select one or more CVAT YOLO 1.1 exported ZIP files</p>
-                    </div>
-
-                    <div class="file-list" id="fileList"></div>
-
-                    <div class="form-group">
-                        <label for="epochs">Training Epochs</label>
-                        <input type="number" id="epochs" value="150" min="1" max="1000">
-                        <p class="help-text">Number of training iterations (default: 150)</p>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="batchSize">Batch Size</label>
-                        <input type="number" id="batchSize" value="16" min="1" max="128">
-                        <p class="help-text">Training batch size (default: 16)</p>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="modelSize">Model Size</label>
-                        <select id="modelSize">
-                            <option value="n">Nano (fastest, least accurate)</option>
-                            <option value="s" selected>Small (balanced)</option>
-                            <option value="m">Medium (slower, more accurate)</option>
-                            <option value="l">Large (slowest, most accurate)</option>
-                        </select>
-                        <p class="help-text">YOLO model size - larger models are more accurate but slower</p>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="device">Training Device</label>
-                        <select id="device">
-                            <option value="auto" selected>Auto (recommended)</option>
-                            <option value="cpu">CPU</option>
-                            <option value="cuda">GPU (CUDA)</option>
-                        </select>
-                        <p class="help-text">Device for training - GPU is much faster if available</p>
-                    </div>
-
-                    <button class="upload-button" id="trainButton" onclick="startTraining()" disabled>
-                        🚀 Start Training
-                    </button>
-
-                    <div class="training-progress" id="trainingProgress">
-                        <h3>Training Progress</h3>
-                        <div class="progress-bar">
-                            <div class="progress-fill" id="progressFill">0%</div>
-                        </div>
-                        <p id="progressText">Preparing training...</p>
-                    </div>
-
-                    <div class="model-info" id="modelInfo">
-                        <h3>✅ Training Complete!</h3>
-                        <div id="modelMetrics"></div>
-                        <button class="upload-button" style="margin-top: 20px;" onclick="resetTraining()">
-                            Train Another Model
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="error-message" id="errorMessage"></div>
-            <div class="success-message" id="successMessage"></div>
-        </div>
-
-        <div class="footer">
-            <p>AI Basketball Referee API v1.0</p>
-            <p style="margin-top: 10px; font-size: 14px;">
-                <a href="/docs" target="_blank" style="color: white; text-decoration: underline;">
-                    API Documentation
-                </a>
-            </p>
-        </div>
+    <div class="tabs" role="tablist" aria-label="Main tabs">
+      <button class="tab active" id="tabAnalyze">Analyze Now</button>
+      <button class="tab" id="tabAsync">Analyze (Background)</button>
+      <button class="tab" id="tabTrain">Train (Coming)</button>
     </div>
 
-    <script src="/static/js/main.js"></script>
+    <div class="grid">
+      <div>
+        <section id="panelAnalyze" class="card" role="region" aria-labelledby="tabAnalyze">
+          <h3>Analyze Video (synchronous)</h3>
+          <p class="small">Upload a short free-throw video. The server runs detection/tracking and returns results.</p>
+
+          <div class="uploader" id="uploader">
+            <div class="preview" id="videoPreview">No video selected</div>
+
+            <div style="width:100%;display:flex;gap:8px;justify-content:center;margin-top:8px">
+              <input id="fileInput" type="file" accept="video/*" style="display:none" />
+              <button class="btn" id="chooseBtn">Choose Video</button>
+              <button class="btn secondary" id="pasteUrlBtn">Paste URL</button>
+            </div>
+
+            <div class="small muted-block" id="fileInfo">Supported formats: MP4, MOV, AVI (keep files under ~100MB for sync)</div>
+            <div style="width:100%;margin-top:10px">
+              <div class="form-row" style="margin-bottom:8px">
+                <label>Sample Rate</label>
+                <input id="sampleRate" type="number" min="1" max="30" value="3">
+                <label style="min-width:88px;margin-left:8px">Model</label>
+                <select id="modelUse">
+                  <option value="yolo">YOLO (model)</option>
+                  <option value="naive">Naive (bg-subtraction)</option>
+                </select>
+              </div>
+              <div style="display:flex;gap:8px">
+                <button class="btn" id="analyzeBtn">Analyze Now</button>
+                <button class="btn secondary" id="resetBtn">Reset</button>
+              </div>
+
+              <div id="syncProgress" style="display:none;margin-top:12px">
+                <div class="progress"><i id="syncFill">0%</i></div>
+                <div id="syncText" class="small muted-block">Queued</div>
+              </div>
+
+              <div id="syncError" class="error" role="alert" style="display:none"></div>
+              <div id="syncSuccess" class="success" style="display:none"></div>
+            </div>
+          </div>
+
+          <div id="syncResults" style="display:none;margin-top:14px">
+            <h4>Results</h4>
+            <div class="results-grid">
+              <div class="result">
+                <div class="small">Made Shots</div>
+                <div class="value" id="madeShots">0</div>
+              </div>
+              <div class="result">
+                <div class="small">Missed Shots</div>
+                <div class="value" id="missedShots">0</div>
+              </div>
+              <div class="result">
+                <div class="small">Attempts</div>
+                <div class="value" id="totalAttempts">0</div>
+              </div>
+              <div class="result">
+                <div class="small">Accuracy</div>
+                <div class="value" id="accuracy">0%</div>
+              </div>
+            </div>
+            <div class="muted-block" style="margin-top:8px">Raw JSON: <pre id="rawJson" style="display:inline;margin:0;padding:6px;background:rgba(0,0,0,0.2);border-radius:6px"></pre></div>
+          </div>
+        </section>
+
+        <section id="panelAsync" class="card" role="region" aria-labelledby="tabAsync" style="margin-top:16px;display:none">
+          <h3>Analyze Video (background)</h3>
+          <p class="small">Use this for longer videos. The file is uploaded, a job is enqueued and the worker processes it off-request.</p>
+
+          <div class="uploader">
+            <div style="width:100%;display:flex;gap:8px;justify-content:center">
+              <input id="fileInputAsync" type="file" accept="video/*" style="display:none" />
+              <button class="btn" id="chooseBtnAsync">Choose Video</button>
+              <input id="asyncName" placeholder="Optional job name" style="flex:1;padding:8px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.04);color:inherit" />
+            </div>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <button class="btn" id="enqueueBtn">Enqueue Job</button>
+              <button class="btn secondary" id="checkJobBtn">Check Job</button>
+            </div>
+
+            <div id="enqueueInfo" class="small muted-block" style="margin-top:8px"></div>
+            <div id="jobStatus" style="margin-top:12px"></div>
+            <div id="asyncError" class="error" role="alert" style="display:none"></div>
+          </div>
+        </section>
+
+      </div>
+
+      <aside>
+        <div class="card">
+          <h4>Model & Server</h4>
+          <div class="muted-block">Model path: <span id="modelPath">models/best.pt</span></div>
+          <div class="muted-block" style="margin-top:8px">Loaded: <span id="modelLoaded">checking...</span></div>
+          <div class="muted-block" style="margin-top:8px">HOOP_LINE_RATIO: <input id="hoopRatio" type="number" step="0.01" min="0.1" max="0.9" value="0.40" style="width:80px;background:transparent;border:1px solid rgba(255,255,255,0.04);padding:6px;border-radius:6px" /></div>
+          <div style="margin-top:12px">
+            <button class="btn" id="refreshStatus">Refresh Status</button>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <h4>Log / Output</h4>
+          <pre id="log" style="height:320px;overflow:auto;margin:0;padding:10px;background:rgba(0,0,0,0.06);border-radius:8px;font-size:13px">Ready.</pre>
+        </div>
+      </aside>
+    </div>
+
+    <footer>
+      API endpoints: <a class="link" href="/docs" target="_blank">/docs (OpenAPI)</a> • <span class="small">Designed to communicate with /status, /analyze and /analyze_async</span>
+    </footer>
+  </div>
+
+  <script>
+    // Lightweight UI logic that communicates with backend endpoints
+    (function(){
+      const statusDot = document.getElementById('statusDot');
+      const statusText = document.getElementById('statusText');
+      const statusDetails = document.getElementById('statusDetails');
+      const modelLoadedSpan = document.getElementById('modelLoaded');
+      const modelPathSpan = document.getElementById('modelPath');
+      const hoopRatioInput = document.getElementById('hoopRatio');
+
+      const chooseBtn = document.getElementById('chooseBtn');
+      const fileInput = document.getElementById('fileInput');
+      const videoPreview = document.getElementById('videoPreview');
+      const analyzeBtn = document.getElementById('analyzeBtn');
+      const resetBtn = document.getElementById('resetBtn');
+      const sampleRateInput = document.getElementById('sampleRate');
+      const modelUseSelect = document.getElementById('modelUse');
+
+      const syncProgress = document.getElementById('syncProgress');
+      const syncFill = document.getElementById('syncFill');
+      const syncText = document.getElementById('syncText');
+      const syncResults = document.getElementById('syncResults');
+      const syncError = document.getElementById('syncError');
+      const syncSuccess = document.getElementById('syncSuccess');
+      const rawJson = document.getElementById('rawJson');
+
+      const madeShots = document.getElementById('madeShots');
+      const missedShots = document.getElementById('missedShots');
+      const totalAttempts = document.getElementById('totalAttempts');
+      const accuracy = document.getElementById('accuracy');
+      const log = document.getElementById('log');
+
+      const tabAnalyze = document.getElementById('tabAnalyze');
+      const tabAsync = document.getElementById('tabAsync');
+      const tabTrain = document.getElementById('tabTrain');
+      const panelAnalyze = document.getElementById('panelAnalyze');
+      const panelAsync = document.getElementById('panelAsync');
+
+      const chooseBtnAsync = document.getElementById('chooseBtnAsync');
+      const fileInputAsync = document.getElementById('fileInputAsync');
+      const enqueueBtn = document.getElementById('enqueueBtn');
+      const enqueueInfo = document.getElementById('enqueueInfo');
+      const jobStatus = document.getElementById('jobStatus');
+      const checkJobBtn = document.getElementById('checkJobBtn');
+      const asyncError = document.getElementById('asyncError');
+
+      // Tab switching
+      tabAnalyze.addEventListener('click', () => { tabAnalyze.classList.add('active'); tabAsync.classList.remove('active'); tabTrain.classList.remove('active'); panelAnalyze.style.display='block'; panelAsync.style.display='none' });
+      tabAsync.addEventListener('click', () => { tabAsync.classList.add('active'); tabAnalyze.classList.remove('active'); tabTrain.classList.remove('active'); panelAsync.style.display='block'; panelAnalyze.style.display='none' });
+      tabTrain.addEventListener('click', () => alert('Training UI is not enabled in this deployment.'));
+
+      // status check
+      async function checkStatus(){
+        try {
+          const res = await fetch('/status');
+          if(!res.ok) throw new Error('status error: '+res.status);
+          const js = await res.json();
+          statusDot.classList.add('status-online');
+          statusText.textContent = 'API Online';
+          statusDetails.textContent = `v1 • model_loaded=${js.model_loaded ? 'yes' : 'no'}`;
+          modelLoadedSpan.textContent = js.model_loaded ? 'yes' : 'no';
+          modelPathSpan.textContent = js.model_path || modelPathSpan.textContent;
+        } catch (err) {
+          statusDot.classList.remove('status-online');
+          statusText.textContent = 'API Offline';
+          statusDetails.textContent = 'Check server';
+          modelLoadedSpan.textContent = 'unknown';
+        }
+      }
+      checkStatus();
+      setInterval(checkStatus, 8000);
+
+      // File selection + preview
+      chooseBtn.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', () => {
+        const f = fileInput.files[0];
+        if(!f) return;
+        videoPreview.textContent = '';
+        const url = URL.createObjectURL(f);
+        const vid = document.createElement('video');
+        vid.src = url; vid.controls = true; vid.style.maxWidth = '100%'; vid.style.maxHeight = '100%';
+        // clear preview
+        videoPreview.innerHTML = '';
+        videoPreview.appendChild(vid);
+      });
+
+      // Analyze now
+      analyzeBtn.addEventListener('click', async () => {
+        const file = fileInput.files[0];
+        if(!file){ syncError.style.display='block'; syncError.textContent='Please choose a video first.'; return; }
+        syncError.style.display='none'; syncSuccess.style.display='none';
+        syncProgress.style.display='block'; syncFill.style.width='6%'; syncFill.textContent='Starting';
+        syncText.textContent = 'Uploading...';
+        logAppend('Starting synchronous analysis: ' + file.name);
+
+        const fd = new FormData();
+        fd.append('video', file, file.name);
+        fd.append('sample_rate', sampleRateInput.value);
+        fd.append('model_use', modelUseSelect.value);
+
+        try {
+          const r = await fetch('/analyze', { method:'POST', body: fd });
+          if(!r.ok){
+            const text = await r.text();
+            throw new Error(text || r.statusText);
+          }
+          syncFill.style.width='100%'; syncFill.textContent='100%';
+          syncText.textContent = 'Processing complete';
+          const js = await r.json();
+          showResults(js);
+          syncSuccess.style.display='block'; syncSuccess.textContent='Analysis complete';
+          rawJson.textContent = JSON.stringify(js, null, 2);
+          logAppend('Analysis result: ' + JSON.stringify(js));
+        } catch (err){
+          syncError.style.display='block'; syncError.textContent = 'Analysis failed: ' + (err.message || err);
+          logAppend('Analysis error: ' + (err.message || err));
+        } finally {
+          setTimeout(()=>{ syncProgress.style.display='none'; }, 1200);
+        }
+      });
+
+      resetBtn.addEventListener('click', () => {
+        fileInput.value=''; videoPreview.innerHTML='No video selected'; syncResults.style.display='none'; syncError.style.display='none'; syncSuccess.style.display='none'; rawJson.textContent='';
+      });
+
+      function showResults(js){
+        madeShots.textContent = js.made_shots ?? 0;
+        missedShots.textContent = js.missed_shots ?? 0;
+        totalAttempts.textContent = js.total_attempts ?? 0;
+        accuracy.textContent = (js.accuracy ?? 0) + '%';
+        syncResults.style.display = 'block';
+      }
+
+      function logAppend(text){
+        const t = new Date().toISOString() + ' | ' + text + '\n';
+        log.textContent = t + log.textContent;
+      }
+
+      // Async flow
+      chooseBtnAsync.addEventListener('click', () => fileInputAsync.click());
+      fileInputAsync.addEventListener('change', () => {
+        const f = fileInputAsync.files[0];
+        enqueueInfo.textContent = f ? `Selected: ${f.name}` : '';
+      });
+
+      enqueueBtn.addEventListener('click', async () => {
+        const file = fileInputAsync.files[0];
+        if(!file){ asyncError.style.display='block'; asyncError.textContent='Please choose a video first.'; return; }
+        asyncError.style.display='none';
+        enqueueInfo.textContent='Uploading and queuing job...';
+        const fd = new FormData();
+        fd.append('video', file, file.name);
+        try {
+          const r = await fetch('/analyze_async', { method:'POST', body:fd });
+          if(!r.ok) throw new Error('Server error: '+r.status);
+          const js = await r.json();
+          enqueueInfo.innerHTML = 'Job queued: <b>' + js.job_id + '</b>';
+          logAppend('Enqueued job ' + js.job_id);
+          jobStatus.innerHTML = `<div class="small">Job ID: <code>${js.job_id}</code></div>`;
+        } catch (err){
+          asyncError.style.display='block'; asyncError.textContent='Enqueue failed: ' + (err.message || err);
+          logAppend('Enqueue error: ' + (err.message || err));
+        }
+      });
+
+      checkJobBtn.addEventListener('click', async () => {
+        const id = prompt('Enter job id to check (from enqueue response):');
+        if(!id) return;
+        jobStatus.innerHTML = 'Checking...';
+        try {
+          const r = await fetch('/jobs/' + encodeURIComponent(id));
+          if(!r.ok) throw new Error('Job not found: '+r.status);
+          const js = await r.json();
+          jobStatus.innerHTML = '<pre style="white-space:pre-wrap">'+JSON.stringify(js, null, 2)+'</pre>';
+          logAppend('Checked job ' + id + ': ' + js.status);
+        } catch (err){
+          jobStatus.innerHTML = '<div class="error">Error: '+(err.message||err)+'</div>';
+          logAppend('Job check error: ' + (err.message || err));
+        }
+      });
+
+      document.getElementById('pasteUrlBtn').addEventListener('click', async () => {
+        const url = prompt('Paste public video URL (server will attempt to fetch it):');
+        if(!url) return;
+        alert('This UI can accept a URL, but the server must support it. If you want, upload the file directly.');
+      });
+
+      hoopRatioInput.addEventListener('change', () => {
+        const v = parseFloat(hoopRatioInput.value);
+        if(isNaN(v) || v < 0.1 || v > 0.9) { hoopRatioInput.value = '0.40'; return; }
+        logAppend('HOOP_LINE_RATIO (UI) set to ' + v.toFixed(2) + '. Update server env HOOP_LINE_RATIO to persist.');
+      });
+
+      (async ()=> { try{ const r = await fetch('/docs'); if(r.ok) logAppend('OpenAPI available at /docs'); }catch(e){} })();
+
+    })();
+  </script>
 </body>
 </html>
